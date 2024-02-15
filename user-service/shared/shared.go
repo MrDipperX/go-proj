@@ -29,10 +29,11 @@ type EmailConfig struct {
 }
 
 type RedisUserData struct {
-	Username    string `json:"username"`
-	ConfirmCode string `json:"confirm-code"`
-	TokenExpireAt    int64  `json:"expire-at"`
-	Token       string `json:"token"`
+	Username    string `json:"username" db:"username"`
+	ConfirmCode string `json:"confirm-code" db:"confirm-code"`
+	TokenExpireAt    int64  `json:"expire-at" db:"expire-at"`
+	Token       string `json:"token" db:"token"`
+	WorkFlowID string `json:"workflow_id" db:"workflow_id"`
 }
 
 type UserConfirmation struct {
@@ -41,6 +42,6 @@ type UserConfirmation struct {
 }
 
 type ConfirmationSignal struct {
-	WorkflowID string `json:"workflow_id"`
+	Username string `json:"username"`
 	ConfirmationCode string `json:"confirmation_code"`
 }

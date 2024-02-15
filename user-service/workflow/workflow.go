@@ -29,6 +29,15 @@ func UserRegWorkflow(ctx workflow.Context, reg shared.RegistrationBody) (err err
 
 	var ConfirmCode string
 
+	reg.Confirmed = false
+
+	err = workflow.ExecuteActivity(ctx, activity.CreateUser, reg).Get(ctx, nil)
+
+	if err != nil {
+		workflow.GetLogger(ctx).Error("CreateUser Activity failed.", "Error", err)
+		return err
+	}
+
 	err = workflow.ExecuteActivity(ctx, activity.SendGeneratedNumberToEmail, reg).Get(ctx, &ConfirmCode)
 
 	if err != nil {
@@ -48,33 +57,32 @@ func UserRegWorkflow(ctx workflow.Context, reg shared.RegistrationBody) (err err
 		return err
 	}
 
-
 	// Start a timer for n minutes
-    timerFuture := workflow.NewTimer(ctx, time.Minute*3)
-    workflow.GetLogger(ctx).Info("Start a timer")
+	timerFuture := workflow.NewTimer(ctx, time.Minute*3)
+	workflow.GetLogger(ctx).Info("Start a timer")
 
-    // Use selector to wait for timer expiration or payment completion
-    selector := workflow.NewSelector(ctx)
-    var timerStatus int8
+	// Use selector to wait for timer expiration or payment completion
+	selector := workflow.NewSelector(ctx)
+	var timerStatus int8
 
 	var signalData string
 
-    selector.AddFuture(timerFuture, func(f workflow.Future) {
-        // Timer expired, handle accordingly (e.g., cancel order)
-        workflow.GetLogger(ctx).Info("Timer expired, email not verified in time. Cancelling registration.")
-        timerStatus = 0
-    }).AddReceive(workflow.GetSignalChannel(ctx, "email"), func(c workflow.ReceiveChannel, more bool) {
-        // Handle the "paymentCompleted" signal
+	selector.AddFuture(timerFuture, func(f workflow.Future) {
+		// Timer expired, handle accordingly (e.g., cancel order)
+		workflow.GetLogger(ctx).Info("Timer expired, email not verified in time. Cancelling registration.")
+		timerStatus = 0
+	}).AddReceive(workflow.GetSignalChannel(ctx, "email"), func(c workflow.ReceiveChannel, more bool) {
+		// Handle the "paymentCompleted" signal
 		c.Receive(ctx, &signalData)
 
-        workflow.GetLogger(ctx).Info("Email verified successfully!")
-        timerStatus = 1
-    })
+		workflow.GetLogger(ctx).Info("Email verified successfully!")
+		timerStatus = 1
+	})
 
-    // Wait for either timer expiration, payment completion, or workflow cancellation
-    selector.Select(ctx)
+	// Wait for either timer expiration, payment completion, or workflow cancellation
+	selector.Select(ctx)
 
-	if timerStatus == 1{
+	if timerStatus == 1 {
 		// Redis check confirmation code
 
 		userConfirmation := shared.UserConfirmation{
@@ -91,28 +99,16 @@ func UserRegWorkflow(ctx workflow.Context, reg shared.RegistrationBody) (err err
 		}
 
 		if confirmationStatus {
-			// Hash password
-			err = workflow.ExecuteActivity(ctx, activity.CreateUser, reg).Get(ctx, nil)
-
-			if err != nil {
-				workflow.GetLogger(ctx).Error("CreateUser Activity failed.", "Error", err)
-				return err
-			}
 
 			// Token generation here
-
-
 
 		} else {
 			workflow.GetLogger(ctx).Error("Confirmation code is incorrect")
 			return err
 		}
-    }else if timerStatus == 0{
+	} else if timerStatus == 0 {
 		return err
-    }
-
-
-
+	}
 
 	return nil
 

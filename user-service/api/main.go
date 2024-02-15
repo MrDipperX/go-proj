@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
+	"user-service/utils"
 )
 
 func main() {
@@ -36,7 +37,13 @@ func main() {
 			return
 		}
 
-		WorkflowID := "busOrderWorkflow" + uuid.New().String()
+		WorkflowID := "UserRegisterWorkflow" + uuid.New().String()
+
+		err = utils.WriteWorkflowIDToRedis(reg.Login, WorkflowID)
+		if err != nil {
+			cttx.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
 
 		// Start the BusOrderWorkflow using the Temporal client
 		workflowOptions := client.StartWorkflowOptions{
@@ -64,7 +71,7 @@ func main() {
 		// cttx.JSON(200, gin.H{"OrderID": PerformOrderResponse.OrderID})
 	})
 
-	r.POST("/bus/payment", func(cttx *gin.Context) {
+	r.POST("api/v1/user/confirm", func(cttx *gin.Context) {
 
 		var cnfSignal shared.ConfirmationSignal
 
@@ -72,11 +79,16 @@ func main() {
 			cttx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-		// Handle payment logic here for GET request
-		// You can start a new workflow or perform any other actions related to payment processing
-		// For demonstration, we just return a success message
+
+		WorkflowID, err := utils.GetWorkflowIDFromRedis(cnfSignal.Username)
+		if err != nil {
+			cttx.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		
+		
 		signalName := "emailConfirmation"
-		err = c.SignalWorkflow(context.Background(), cnfSignal.WorkflowID, "", signalName, cnfSignal.ConfirmationCode)
+		err = c.SignalWorkflow(context.Background(), WorkflowID, "", signalName, cnfSignal.ConfirmationCode)
 		if err != nil {
 			cttx.JSON(500, gin.H{"error": err.Error()})
 			return

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"github.com/go-redis/redis/v8"
+	"context"
 
 )
 
@@ -50,4 +52,73 @@ func HashPassword(password string) (string, error) {
 func CheckPasswordHash(password, hash string) bool {
     err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
     return err == nil
+}
+
+
+func WriteWorkflowIDToRedis (username string, workflowID string) error {
+	// Get the token from Redis
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "192.168.1.224:6379", // Redis server address
+		Password: "",               // No password set
+		DB:       0,                // Use default DB
+	})
+
+	defer func() {
+		if err := rdb.Close(); err != nil {
+			fmt.Println("Error on close Redis connection")
+		}
+	}()
+
+	// Context to use for the Redis operation
+	ctxR := context.Background()
+
+	// Set the hash fields in Redis
+	err := rdb.HSet(ctxR, username, map[string]interface{}{
+		"workflow-id": workflowID,
+	}).Err()
+
+	if err != nil {
+		fmt.Println("Error on write workflow ID to Redis")
+		return err
+	}
+
+	return nil
+}
+
+
+func GetWorkflowIDFromRedis (username string) (string, error) {
+	// Get the token from Redis
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "192.168.1.224:6379", // Redis server address
+		Password: "",               // No password set
+		DB:       0,                // Use default DB
+	})
+
+	defer func() {
+		if err := rdb.Close(); err != nil {
+			fmt.Println("Error on close Redis connection")
+		}
+	}()
+
+	// Context to use for the Redis operation
+	ctxR := context.Background()
+
+	// Get the hash fields from Redis
+	val, err := rdb.HGetAll(ctxR, username).Result()
+	if err != nil {
+		if err == redis.Nil {
+			fmt.Println(username, "Key does not exist")
+		} else {
+			fmt.Println("Error on get value from Redis")
+		}
+		return "", err
+	}
+
+	workflowID, ok := val["workflow_id"]
+	if !ok {
+		fmt.Println("Confirm code not found in data for key:", username)
+		return "", nil
+	}
+
+	return workflowID, nil
 }

@@ -76,6 +76,7 @@ func AddUserDataToRedis(ctx context.Context, redisUserData shared.RedisUserData)
 		"confirm-code": redisUserData.ConfirmCode,
 		"expire-at":    redisUserData.TokenExpireAt, // Convert time to Unix timestamp
 		"token":        redisUserData.Token,
+		"workflow_id":  redisUserData.WorkFlowID,
 	}).Err()
 	if err != nil {
 		logger.Error("Error on write user data to Redis")
@@ -87,13 +88,14 @@ func AddUserDataToRedis(ctx context.Context, redisUserData shared.RedisUserData)
 	return nil
 }
 
+
 func CheckConfirmationCodeFromRedis(ctx context.Context, reg shared.UserConfirmation) (bool, error) {
 	
 	logger := activity.GetLogger(ctx)
 	logger.Info("Preparing to check confirmation code from Redis")
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379", // Redis server address
+		Addr:     "192.168.1.224::6379", // Redis server address
 		Password: "",               // No password set
 		DB:       0,                // Use default DB
 	})
@@ -102,7 +104,7 @@ func CheckConfirmationCodeFromRedis(ctx context.Context, reg shared.UserConfirma
 	ctxR := context.Background()
 
 	// Retrieve data from Redis by key
-	val, err := rdb.Get(ctxR, reg.Username).Result()
+	val, err := rdb.HGetAll(ctxR, reg.Username).Result()
 	if err != nil {
 		if err == redis.Nil {
 			logger.Error(reg.Username, "Key does not exist")
@@ -112,8 +114,14 @@ func CheckConfirmationCodeFromRedis(ctx context.Context, reg shared.UserConfirma
 		return false, err
 	}
 
+	confirmCode, ok := val["confirm-code"]
+	if !ok {
+		logger.Error("Confirm code not found in data for key:", reg.Username)
+		return false, nil
+	}
+
 	// Check if the confirmation code matches
-	if val != reg.ConfirmCode {
+	if confirmCode != reg.ConfirmCode {
 		logger.Error("Confirmation code does not match")
 		return false, nil
 	}
@@ -139,7 +147,7 @@ func CreateUser(ctx context.Context, userData shared.RegistrationBody) error {
 
 	defer conn.Close()
 
-	_, err = conn.Exec("CREATE TABLE IF NOT EXISTS Users (Name Varchar(255), Surname Varchar(255), Phone Varchar(255), Email Varchar(255), Login Varchar(255), Password Varchar(255), Confirmed BOOLEAN);")
+	_, err = conn.Exec("CREATE TABLE IF NOT EXISTS Users (Name Varchar(255), Surname Varchar(255), Phone Varchar(255) UNIQUE, Email Varchar(255) UNIQUE, Login Varchar(255) UNIQUE, Password Varchar(255), Validated BOOLEAN);")
 	if err != nil {
 		logger.Error("Error on create table")
 		return err
